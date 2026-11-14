@@ -1,0 +1,25 @@
+# Compiled executables
+*.exe
+*.out
+
+# Object files
+*.o
+*.obj
+
+# Build directories
+build/
+bin/
+
+# Debug files
+*.pdb
+*.ilk
+*.dll
+
+# IDE/editor files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
