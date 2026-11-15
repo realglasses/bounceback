@@ -3,8 +3,6 @@
 #include <raylib.h>
 #include <raymath.h>
 
-// enum values are true compile-time constants, so they are safe in
-// file-scope initializers (a const int is not, in strict C)
 enum { screenWidth = 1920, screenHeight = 1080 };
 
 const int FPS = 60;
@@ -85,37 +83,56 @@ static Triangle level1Tris[] =
 // lvl 2
 static Rectangle level2Rects[] =
 {
-    {900, 600, 120, 480},   // pillar
-    {1644, 250, 30, 260},   // backboard behind the hoop
+    {900, 600, 120, 480},
+    {1644, 250, 30, 260},
 };
 
 static Triangle level2Tris[] =
 {
-    {{700, 0}, {1100, 0}, {900, 250}},          // ceiling spike
-    {{1250, screenHeight}, {1450, screenHeight}, {1350, 950}}, // floor bumper
+    {{700, 0}, {1100, 0}, {900, 250}},
+    {{1250, screenHeight}, {1450, screenHeight}, {1350, 950}},
 };
 
 // lvl 3
 static Rectangle level3Rects[] =
 {
-    {0, 450, 700, 60},      // starting ledge
-    {1100, 0, 80, 300},     // hanging block
-    {1100, 500, 80, 580},   // wall up from the floor
+    {0, 450, 700, 60},
+    {1100, 0, 80, 300},
+    {1100, 500, 80, 580},
 };
 
 static Triangle level3Tris[] =
 {
-    {{screenWidth, 860}, {screenWidth, screenHeight}, {1700, screenHeight}}, // right-side bumper
+    {{screenWidth, 860}, {screenWidth, screenHeight}, {1700, screenHeight}}, 
 };
 
 // lvl 4
 static Rectangle level4Rects[] =
 {
-    {0,    260, 1750, 40},  // shelf 1, gap on the right (170px)
-    {150,  480, 1770, 40},  // shelf 2, gap on the left (150px)
-    {0,    700, 1750, 40},  // shelf 3, gap on the right (170px)
-    {900,  300, 40,   40},  // tooth hanging into corridor 1
-    {1000, 520, 40,   40},  // tooth hanging into corridor 2
+    {0, 250, 700, 50}, 
+    {935, 0, 50, 900},
+    {150, 500, 785, 50},
+    {0, 750, 700, 50},
+    {150, 900, 835, 50},
+    {1100, 180, 50, 900},
+};
+
+static Triangle level4Tris[] = 
+{
+    {{1200, 0}, {screenWidth, screenHeight - 300}, {screenWidth, 0}},
+    {{1150, 180}, {screenWidth-100, screenHeight}, {1150, screenHeight}},
+};
+
+//lvl 5
+static Rectangle level5Rects[] =
+{
+    {800, 450, 60, 630},
+    {1100, 600, 60, 480},
+};
+
+static Triangle level5Tris[] =
+{
+    {{860, 700}, {1000, 770}, {860, 770}},
 };
 
 static Level levels[] =
@@ -140,9 +157,15 @@ static Level levels[] =
     },
     {
         {level4Rects, ARRAY_LEN(level4Rects)},
-        {NULL, 0},
+        {level4Tris, ARRAY_LEN(level4Tris)},
         HOOP(1763, 900),
         {150.0f, 220.0f}
+    },
+    {
+        {level5Rects, ARRAY_LEN(level5Rects)},
+        {level5Tris,  ARRAY_LEN(level5Tris)},
+        HOOP(908, 900),
+        {150.0f, screenHeight - 36.0f}
     },
 };
 
@@ -290,10 +313,8 @@ bool passedThroughHoop(Hoop hoop, Vector2 previousPosition, Vector2 position)
 {
     float hoopY = hoop.a.y;
 
-    // center crosses the rim line going down
     if (!(previousPosition.y < hoopY && position.y >= hoopY)) return false;
 
-    // x of the center at the exact moment of crossing
     float t = (hoopY - previousPosition.y) / (position.y - previousPosition.y);
     float x = previousPosition.x + (position.x - previousPosition.x) * t;
 
@@ -363,7 +384,7 @@ void updateLevelCollisions(const Level *level, Vector2 *position, Vector2 *veloc
 
 int main(void)
 {
-    InitWindow(screenWidth, screenHeight, "title");
+    InitWindow(screenWidth, screenHeight, "basketball");
     SetTargetFPS(FPS);
 
     size_t currentLevel = 0;
@@ -392,8 +413,6 @@ int main(void)
         const Level *level = &levels[currentLevel];
         Vector2 prevPosition = position;
 
-        // No new drags while the level-complete button is up,
-        // so clicking the button can't grab the ball behind it
         if (!nextButton.active &&
             IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
             CheckCollisionPointCircle(mouse, position, size))
