@@ -3,8 +3,10 @@
 #include <raylib.h>
 #include <raymath.h>
 
-const int screenWidth = 1920;
-const int screenHeight = 1080;
+// enum values are true compile-time constants, so they are safe in
+// file-scope initializers (a const int is not, in strict C)
+enum { screenWidth = 1920, screenHeight = 1080 };
+
 const int FPS = 60;
 
 const float gravity = 980.0f;
@@ -14,7 +16,12 @@ const float maxVelocity = 1500.0f;
 const float maxMagnitude = 100.0f;
 const float friction = 100.0f;
 
+#define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
+#define HOOP_WIDTH 144
+#define HOOP(x, y) {{(x), (y)}, {(x) + HOOP_WIDTH, (y)}}
+
 Texture2D hoopTexture;
+Texture2D ballTexture;
 
 typedef struct Triangle
 {
@@ -23,11 +30,11 @@ typedef struct Triangle
     Vector2 c;
 }Triangle;
 
-typedef struct rectView
+typedef struct RectView
 {
     Rectangle *items;
     size_t len;
-}rectView;
+}RectView;
 
 typedef struct TriView
 {
@@ -35,7 +42,7 @@ typedef struct TriView
     size_t len;
 }TriView;
 
-typedef struct Button
+typedef struct Text
 {
     bool active;
     int x;
@@ -46,7 +53,7 @@ typedef struct Button
     Color rectColor;
     const char *text;
     Color textColor;
-}Button;
+}Text;
 
 typedef struct Hoop
 {
@@ -54,21 +61,96 @@ typedef struct Hoop
     Vector2 b;
 }Hoop;
 
-Rectangle rectangles[] = 
+typedef struct Level
+{
+    RectView rectangles;
+    TriView triangles;
+    Hoop hoop;
+    Vector2 start;
+}Level;
+
+// tutorial ig
+static Rectangle level1Rects[] =
 {
     {screenWidth/2, screenHeight - 100, screenWidth/2, 100},
     {screenWidth-500, screenHeight-1000, 500, 100}
 };
 
-Triangle triangles[] = 
+static Triangle level1Tris[] =
 {
     {{0, 0}, {0, 400}, {400, 0}},
     {{3*screenWidth/4, screenHeight-100}, {screenWidth, screenHeight-100}, {screenWidth, screenHeight-200}},
 };
 
-Button button1 = {0, screenWidth/2-100, screenHeight/2-50, 200, 100, 40, GRAY, "good job", RAYWHITE};
+// lvl 2
+static Rectangle level2Rects[] =
+{
+    {900, 600, 120, 480},   // pillar
+    {1644, 250, 30, 260},   // backboard behind the hoop
+};
 
-Hoop hoop1 = {{screenWidth/2-72+300, screenHeight/2}, {screenWidth/2+72+300, screenHeight/2}};
+static Triangle level2Tris[] =
+{
+    {{700, 0}, {1100, 0}, {900, 250}},          // ceiling spike
+    {{1250, screenHeight}, {1450, screenHeight}, {1350, 950}}, // floor bumper
+};
+
+// lvl 3
+static Rectangle level3Rects[] =
+{
+    {0, 450, 700, 60},      // starting ledge
+    {1100, 0, 80, 300},     // hanging block
+    {1100, 500, 80, 580},   // wall up from the floor
+};
+
+static Triangle level3Tris[] =
+{
+    {{screenWidth, 860}, {screenWidth, screenHeight}, {1700, screenHeight}}, // right-side bumper
+};
+
+// lvl 4
+static Rectangle level4Rects[] =
+{
+    {0,    260, 1750, 40},  // shelf 1, gap on the right (170px)
+    {150,  480, 1770, 40},  // shelf 2, gap on the left (150px)
+    {0,    700, 1750, 40},  // shelf 3, gap on the right (170px)
+    {900,  300, 40,   40},  // tooth hanging into corridor 1
+    {1000, 520, 40,   40},  // tooth hanging into corridor 2
+};
+
+static Level levels[] =
+{
+    {
+        {level1Rects, ARRAY_LEN(level1Rects)},
+        {level1Tris,  ARRAY_LEN(level1Tris)},
+        HOOP(1188, 540),
+        {screenWidth/2.0f, screenHeight/2.0f}
+    },
+    {
+        {level2Rects, ARRAY_LEN(level2Rects)},
+        {level2Tris,  ARRAY_LEN(level2Tris)},
+        HOOP(1500, 400),
+        {150.0f, screenHeight - 36.0f}
+    },
+    {
+        {level3Rects, ARRAY_LEN(level3Rects)},
+        {level3Tris,  ARRAY_LEN(level3Tris)},
+        HOOP(1400, 850),
+        {150.0f, 410.0f}
+    },
+    {
+        {level4Rects, ARRAY_LEN(level4Rects)},
+        {NULL, 0},
+        HOOP(1763, 900),
+        {150.0f, 220.0f}
+    },
+};
+
+
+
+#define LEVEL_COUNT ARRAY_LEN(levels)
+
+Text nextButton = {false, screenWidth/2-100, screenHeight/2-50, 200, 100, 40, GRAY, "next level", RAYWHITE};
 
 Vector2 closestPointOnSegment(Vector2 p, Vector2 a, Vector2 b)
 {
@@ -204,70 +286,117 @@ void collisionPoint(Vector2 point, Vector2 *position, Vector2 *velocity)
     }
 }
 
-void drawButton(Button button)
-{
-    DrawRectangle(
-        button.x,
-        button.y,
-        button.width,
-        button.height,
-        button.rectColor
-    );
-
-    int textWidth = MeasureText(button.text, button.fontSize);
-
-    int textX = button.x + (button.width - textWidth) / 2;
-    int textY = button.y + (button.height - button.fontSize) / 2;
-
-    DrawText(
-        button.text,
-        textX,
-        textY,
-        button.fontSize,
-        button.textColor
-    );
-}
-
-void drawHoop(Hoop hoop, Texture2D texture){
-    DrawTexture(texture, hoop.a.x, hoop.a.y, WHITE);
-}
-
-bool passedThroughHoop(Hoop hoop, Vector2 previousPosition, Vector2 position, float radius) 
+bool passedThroughHoop(Hoop hoop, Vector2 previousPosition, Vector2 position)
 {
     float hoopY = hoop.a.y;
 
-    bool crossedDown =
-        previousPosition.y + radius < hoopY &&
-        position.y + radius >= hoopY;
+    // center crosses the rim line going down
+    if (!(previousPosition.y < hoopY && position.y >= hoopY)) return false;
 
-    bool withinOpening =
-        position.x - radius > hoop.a.x &&
-        position.x + radius < hoop.b.x;
+    // x of the center at the exact moment of crossing
+    float t = (hoopY - previousPosition.y) / (position.y - previousPosition.y);
+    float x = previousPosition.x + (position.x - previousPosition.x) * t;
 
-    return crossedDown && withinOpening;
+    return x > hoop.a.x && x < hoop.b.x;
 }
 
-rectView level1Rects = {rectangles, sizeof(rectangles)/sizeof(rectangles[0])};
-TriView level1Tri = {triangles, sizeof(triangles)/sizeof(triangles[0])};
+bool textClicked(Text text, Vector2 mouse)
+{
+    if (!text.active) return false;
+
+    Rectangle bounds = {text.x, text.y, text.width, text.height};
+
+    return IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
+           CheckCollisionPointRec(mouse, bounds);
+}
+
+void drawText(Text text)
+{
+    DrawRectangle(text.x, text.y, text.width, text.height, text.rectColor);
+
+    int textWidth = MeasureText(text.text, text.fontSize);
+
+    int textX = text.x + (text.width - textWidth) / 2;
+    int textY = text.y + (text.height - text.fontSize) / 2;
+
+    DrawText(text.text, textX, textY, text.fontSize, text.textColor);
+}
+
+void drawHoop(Hoop hoop, Texture2D texture)
+{
+    DrawTexture(texture, hoop.a.x, hoop.a.y, WHITE);
+}
+
+void drawTriangle(Triangle t, Color color)
+{
+    float cross = (t.b.x - t.a.x) * (t.c.y - t.a.y)
+                - (t.b.y - t.a.y) * (t.c.x - t.a.x);
+
+    if (cross > 0.0f)
+        DrawTriangle(t.a, t.c, t.b, color);
+    else
+        DrawTriangle(t.a, t.b, t.c, color);
+}
+
+void drawLevel(const Level *level)
+{
+    for (size_t i = 0; i < level->rectangles.len; i++)
+        DrawRectangleRec(level->rectangles.items[i], BLACK);
+
+    for (size_t i = 0; i < level->triangles.len; i++)
+        drawTriangle(level->triangles.items[i], BLACK);
+
+    drawHoop(level->hoop, hoopTexture);
+}
+
+void updateLevelCollisions(const Level *level, Vector2 *position, Vector2 *velocity)
+{
+    for (size_t i = 0; i < level->rectangles.len; i++)
+        collisionRect(&level->rectangles.items[i], position, velocity);
+
+    for (size_t i = 0; i < level->triangles.len; i++)
+        collisionTri(&level->triangles.items[i], position, velocity);
+
+    collisionPoint(level->hoop.a, position, velocity);
+    collisionPoint(level->hoop.b, position, velocity);
+}
 
 int main(void)
 {
     InitWindow(screenWidth, screenHeight, "title");
     SetTargetFPS(FPS);
 
-    Vector2 position = {screenWidth / 2.0f, screenHeight / 2.0f};
+    size_t currentLevel = 0;
+
+    Vector2 position = levels[currentLevel].start;
     Vector2 velocity = {0.0f, 0.0f};
 
     hoopTexture = LoadTexture("assets/basketball net.png");
+    ballTexture = LoadTexture("assets/basketball.png");
     bool isDragging = false;
-    bool isPassedThroughHoop = false;
+
     while (!WindowShouldClose())
     {
-        Vector2 prevPosition = position;
         const float dt = GetFrameTime();
         Vector2 mouse = GetMousePosition();
 
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointCircle(mouse, position, size))
+        if (textClicked(nextButton, mouse))
+        {
+            currentLevel = (currentLevel + 1) % LEVEL_COUNT;
+            position = levels[currentLevel].start;
+            velocity = (Vector2){0.0f, 0.0f};
+            isDragging = false;
+            nextButton.active = false;
+        }
+
+        const Level *level = &levels[currentLevel];
+        Vector2 prevPosition = position;
+
+        // No new drags while the level-complete button is up,
+        // so clicking the button can't grab the ball behind it
+        if (!nextButton.active &&
+            IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
+            CheckCollisionPointCircle(mouse, position, size))
         {
             isDragging = true;
             velocity = (Vector2){0.0f, 0.0f};
@@ -280,10 +409,7 @@ int main(void)
             if (Vector2Length(vector) > maxMagnitude)
                 vector = Vector2Scale(Vector2Normalize(vector), maxMagnitude);
 
-            velocity = Vector2Scale(
-                vector,
-                launchPower
-            );
+            velocity = Vector2Scale(vector, launchPower);
 
             float speed = Vector2Length(velocity);
 
@@ -295,7 +421,6 @@ int main(void)
 
         if (!isDragging)
         {
-
             velocity.y += gravity * dt;
 
             float speed = Vector2Length(velocity);
@@ -305,7 +430,7 @@ int main(void)
                 float newSpeed = fmaxf(0.0f, speed - friction * dt);
                 velocity = Vector2Scale(Vector2Normalize(velocity), newSpeed);
             }
-            
+
             position.x += velocity.x * dt;
             position.y += velocity.y * dt;
 
@@ -321,47 +446,36 @@ int main(void)
             {
                 velocity.y *= -1.0f;
             }
-
         }
 
-        for(int i = 0; i<level1Rects.len; i++)
+        updateLevelCollisions(level, &position, &velocity);
+
+        if (!nextButton.active && passedThroughHoop(level->hoop, prevPosition, position))
         {
-            collisionRect(&level1Rects.items[i], &position, &velocity);
+            nextButton.text = (currentLevel + 1 < LEVEL_COUNT) ? "next level" : "play again";
+            nextButton.active = true;
         }
-
-        for(int i = 0; i<level1Tri.len; i++){
-            collisionTri(&level1Tri.items[i], &position, &velocity);
-        }
-        
-        collisionPoint(hoop1.a, &position, &velocity);
-        collisionPoint(hoop1.b, &position, &velocity);
-
-        if (passedThroughHoop(hoop1, prevPosition, position, size)) button1.active = 1;
 
         BeginDrawing();
         ClearBackground(RAYWHITE);
-        for(int i = 0; i<level1Rects.len; i++)
-        {
-            DrawRectangleRec(level1Rects.items[i], BLACK);
-        }
-        for(int i = 0; i<level1Tri.len; i++){
-            DrawTriangle(level1Tri.items[i].a, level1Tri.items[i].b, level1Tri.items[i].c, BLACK);
-        }
 
-        drawHoop(hoop1, hoopTexture);
+        drawLevel(level);
 
-        if (button1.active) drawButton(button1);
+        DrawText(TextFormat("level %d / %d", (int)currentLevel + 1, (int)LEVEL_COUNT),
+                 450, 20, 30, DARKGRAY);
+
+        if (nextButton.active) drawText(nextButton);
 
         if (isDragging)
             DrawLineV(position, mouse, BLUE);
 
-        DrawCircleV(position, size, RED);
-
+        DrawTexture(ballTexture, position.x-size, position.y-size, WHITE);
 
         EndDrawing();
     }
+
     UnloadTexture(hoopTexture);
+    UnloadTexture(ballTexture);
     CloseWindow();
     return 0;
 }
-
