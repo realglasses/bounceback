@@ -1,66 +1,115 @@
 #include <stdio.h>
 #include <math.h>
 #include <raylib.h>
+#include <raymath.h>
 
-const int screenWidth = 800;
-const int screenHeight = 800;
+const int screenWidth = 1920;
+const int screenHeight = 1080;
 const int FPS = 60;
 
-typedef struct ScreenPoint
-{
-    int x;
-    int y;
-}ScreenPoint;
+const float gravity = 980.0f;
+const float size = 36.0f;
+const float launchPower = 10.0f;
+const float maxVelocity = 1500.0f;
+const float maxMagnitude = 100.0f;
+const float friction = 100.0f;
 
-typedef struct FloatPoint{
-    float x;
-    float y;
-}FloatPoint;
+typedef struct rectView{
+    Rectangle* items;
+    size_t len;
+}rectView;
 
-ScreenPoint normalize(FloatPoint p)
-{
-    ScreenPoint q = {(int) ((p.x+1)/2*screenWidth), (int) ((1-p.y)/2*screenHeight)};
-    return q;
-}
+Rectangle rectangles[] = {
+    {0, 0, 100, 100},
+    {screenWidth/2, screenHeight - 100, screenWidth/2, 100},
+};
 
-FloatPoint project(float x, float y, float z)
-{
-    FloatPoint p = {x/z, y/z};
-    return p;
-}
-
-FloatPoint point(float x, float y)
-{
-    FloatPoint p = {x, y};
-    return p;
-}
+rectView level1Rects = {rectangles, sizeof(rectangles)/sizeof(rectangles[0])};
 
 int main(void)
 {
-
     InitWindow(screenWidth, screenHeight, "title");
     SetTargetFPS(FPS);
 
-    float dz = 0.0f;
+    Vector2 position = {screenWidth / 2.0f, screenHeight / 2.0f};
+    Vector2 velocity = {0.0f, 0.0f};
 
-    while(!WindowShouldClose())
+    bool isDragging = false;
+
+    while (!WindowShouldClose())
     {
-        const float dt = 1.0f / FPS;
-        dz += 1*dt;
-        ScreenPoint p = normalize(project(0.5, 0.5, 1 + dz));
-        ScreenPoint q = normalize(project(-0.5, 0.5, 1 + dz));
-        ScreenPoint r = normalize(project(0.5, -0.5, 1 + dz));
-        ScreenPoint s = normalize(project(-0.5, -0.5, 1 + dz));
-        const int size = 20;
+        const float dt = GetFrameTime();
+        Vector2 mouse = GetMousePosition();
 
+        for(int i = 0; i<level1Rects.len; i++)
+        {
+            DrawRectangleRec(level1Rects.items[i], BLACK);
+        }
+
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointCircle(mouse, position, size))
+        {
+            isDragging = true;
+            velocity = (Vector2){0.0f, 0.0f};
+        }
+
+        if (isDragging && IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+        {
+            Vector2 vector = Vector2Subtract(position, mouse);
+
+            if (Vector2Length(vector) > maxMagnitude)
+                vector = Vector2Scale(Vector2Normalize(vector), maxMagnitude);
+
+            velocity = Vector2Scale(
+                vector,
+                launchPower
+            );
+
+            float speed = Vector2Length(velocity);
+
+            if (speed > maxVelocity)
+                velocity = Vector2Scale(Vector2Normalize(velocity), maxVelocity);
+
+            isDragging = false;
+        }
+
+        if (!isDragging)
+        {
+
+            velocity.y += gravity * dt;
+
+            float speed = Vector2Length(velocity);
+
+            if (speed > 0.0f)
+            {
+                float newSpeed = fmaxf(0.0f, speed - friction * dt);
+                velocity = Vector2Scale(Vector2Normalize(velocity), newSpeed);
+            }
+            
+            position.x += velocity.x * dt;
+            position.y += velocity.y * dt;
+
+            position.x = fmaxf(size, fminf(position.x, screenWidth - size));
+            position.y = fmaxf(size, fminf(position.y, screenHeight - size));
+
+            if (position.x - size <= 0 || position.x + size >= screenWidth)
+            {
+                velocity.x *= -1.0f;
+            }
+
+            if (position.y - size <= 0 || position.y + size >= screenHeight)
+            {
+                velocity.y *= -1.0f;
+            }
+
+        }
 
         BeginDrawing();
         ClearBackground(RAYWHITE);
 
-        DrawRectangle(p.x-size/2, p.y-size/2, size, size, RED);
-        DrawRectangle(q.x-size/2, q.y-size/2, size, size, RED);
-        DrawRectangle(r.x-size/2, r.y-size/2, size, size, RED);
-        DrawRectangle(s.x-size/2, s.y-size/2, size, size, RED);
+        if (isDragging)
+            DrawLineV(position, mouse, BLUE);
+
+        DrawCircleV(position, size, RED);
 
         EndDrawing();
     }
